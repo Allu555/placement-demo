@@ -1,0 +1,399 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum RoleType {
+  SUPER_ADMIN
+  ADMIN
+  PLACEMENT_OFFICER
+  DEPT_COORDINATOR
+  STUDENT
+  RECRUITER
+  HR
+  INTERVIEWER
+  GUEST
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SHORTLISTED
+  SCREENING
+  TECHNICAL_ROUND
+  HR_ROUND
+  OFFERED
+  REJECTED
+  WITHDRAWN
+}
+
+enum JobStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  ARCHIVED
+}
+
+enum SkillType {
+  TECHNICAL
+  SOFT
+  PROGRAMMING_LANGUAGE
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+// User Model
+model User {
+  id                   String        @id @default(uuid()) @db.Uuid
+  email                String        @unique
+  passwordHash         String?
+  name                 String
+  role                 RoleType      @default(GUEST)
+  isTwoFactorEnabled   Boolean       @default(false)
+  twoFactorSecret      String?
+  isEmailVerified      Boolean       @default(false)
+  emailVerifiedToken   String?
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+  lastLoginAt          DateTime?
+  status               String        @default("ACTIVE") // ACTIVE, SUSPENDED, DEACTIVATED
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  deletedAt            DateTime?
+  createdBy            String?       @db.Uuid
+  updatedBy            String?       @db.Uuid
+
+  // Relations
+  profile              Profile?
+  auditLogs            AuditLog[]
+  sessions             Session[]
+  sentMessages         Message[]     @relation("SentMessages")
+  notifications        Notification[]
+  recruiterCompany     Company?      @relation("RecruiterCompany", fields: [recruiterCompanyId], references: [id])
+  recruiterCompanyId   String?       @db.Uuid
+
+  @@index([email])
+}
+
+// Sessions tracking
+model Session {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  token        String    @unique
+  expiresAt    DateTime
+  ipAddress    String?
+  userAgent    String?
+  deviceType   String?
+  createdAt    DateTime  @default(now())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Role Permissions System for RBAC/ABAC
+model RolePermission {
+  id           String   @id @default(uuid()) @db.Uuid
+  role         RoleType
+  permission   String   // e.g., "job:create", "student:read-all"
+  createdAt    DateTime @default(now())
+
+  @@unique([role, permission])
+}
+
+// Student Profile (LinkedIn-Quality)
+model Profile {
+  id                   String        @id @default(uuid()) @db.Uuid
+  userId               String        @unique @db.Uuid
+  rollNumber           String        @unique
+  cgpa                 Float
+  semester             Int
+  backlogs             Int           @default(0)
+  bio                  String?
+  phone                String?
+  gender               String?
+  birthDate            DateTime?
+  avatarUrl            String?
+  identityDocumentUrl  String?
+  completionPercentage Int           @default(0)
+  
+  // Resume details
+  resumeUrl            String?
+  resumeAtsScore       Int           @default(0)
+  resumeVersionHistory Json?         // Version tracking
+  
+  // Social links
+  githubUrl            String?
+  linkedinUrl          String?
+  leetcodeUrl          String?
+  portfolioUrl         String?
+  codeforcesUrl        String?
+  codechefUrl          String?
+  hackerrankUrl        String?
+  geeksforgeeksUrl     String?
+
+  // Localisation
+  city                 String?
+  state                String?
+  zipCode              String?
+  country              String?
+
+  // Tracking
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  deletedAt            DateTime?
+  createdBy            String?       @db.Uuid
+  updatedBy            String?       @db.Uuid
+
+  // Relations
+  user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch               Branch        @relation(fields: [branchId], references: [id])
+  branchId             String        @db.Uuid
+  education            Education[]
+  experience           Experience[]
+  projects             Project[]
+  skills               ProfileSkill[]
+  applications         Application[]
+}
+
+model University {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  code        String       @unique
+  location    String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  departments Department[]
+}
+
+model Department {
+  id           String     @id @default(uuid()) @db.Uuid
+  name         String
+  code         String
+  universityId String     @db.Uuid
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  university   University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  branches     Branch[]
+}
+
+model Branch {
+  id           String     @id @default(uuid()) @db.Uuid
+  name         String
+  code         String
+  departmentId String     @db.Uuid
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  profiles     Profile[]
+}
+
+model Education {
+  id           String    @id @default(uuid()) @db.Uuid
+  profileId    String    @db.Uuid
+  institution  String
+  degree       String
+  fieldOfStudy String
+  startDate    DateTime
+  endDate      DateTime?
+  cgpa         Float
+  maxCgpa      Float     @default(10.0)
+
+  profile      Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model Experience {
+  id           String    @id @default(uuid()) @db.Uuid
+  profileId    String    @db.Uuid
+  companyName  String
+  title        String
+  location     String?
+  startDate    DateTime
+  endDate      DateTime?
+  isCurrent    Boolean   @default(false)
+  description  String?   @db.Text
+
+  profile      Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model Project {
+  id           String    @id @default(uuid()) @db.Uuid
+  profileId    String    @db.Uuid
+  title        String
+  description  String    @db.Text
+  url          String?
+  githubUrl    String?
+  technologies String[]
+
+  profile      Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model Skill {
+  id        String         @id @default(uuid()) @db.Uuid
+  name      String         @unique
+  type      SkillType      @default(TECHNICAL)
+  profiles  ProfileSkill[]
+}
+
+model ProfileSkill {
+  profileId String @db.Uuid
+  skillId   String @db.Uuid
+
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  skill     Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([profileId, skillId])
+}
+
+// Company Model
+model Company {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String    @unique
+  email          String
+  website        String?
+  logoUrl        String?
+  coverUrl       String?
+  description    String?   @db.Text
+  industry       String?
+  size           String?   // e.g. "100-500"
+  locations      String[]
+  roundsJson     Json?     // Hiring structure
+  selectionStats Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  // Relations
+  recruiters     User[]    @relation("RecruiterCompany")
+  jobs           Job[]
+}
+
+// Jobs / Drives Model
+model Job {
+  id                  String             @id @default(uuid()) @db.Uuid
+  companyId           String             @db.Uuid
+  title               String
+  description         String             @db.Text
+  requirements        String             @db.Text
+  eligibilityCgpa     Float              @default(0.0)
+  eligibilityBacklogs Int                @default(0)
+  eligibilityBranches String[]           // Array of branch codes
+  salaryPackage       Float              // In LPA
+  location            String
+  roundsCount         Int                @default(1)
+  status              JobStatus          @default(DRAFT)
+  deadline            DateTime
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  deletedAt           DateTime?
+  createdById         String?            @db.Uuid
+
+  // Relations
+  company             Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  applications        Application[]
+}
+
+// Applications Model
+model Application {
+  id          String            @id @default(uuid()) @db.Uuid
+  jobId       String            @db.Uuid
+  profileId   String            @db.Uuid
+  resumeUrl   String
+  status      ApplicationStatus @default(APPLIED)
+  feedback    String?           @db.Text
+  appliedAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Relations
+  job         Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  profile     Profile           @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  interviews  Interview[]
+  offers      Offer[]
+}
+
+// Interview Scheduler
+model Interview {
+  id            String          @id @default(uuid()) @db.Uuid
+  applicationId String          @db.Uuid
+  roundName     String
+  roundIndex    Int
+  scheduledAt   DateTime
+  location      String?
+  joinUrl       String?         // Online URL
+  type          String          @default("ONLINE") // ONLINE, OFFLINE
+  status        InterviewStatus @default(SCHEDULED)
+  feedback      String?         @db.Text
+  rating        Int?            // Rating out of 10
+  interviewerId String?         @db.Uuid // Reference to user
+
+  // Relations
+  application   Application     @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+// Offer Letters
+model Offer {
+  id            String      @id @default(uuid()) @db.Uuid
+  applicationId String      @db.Uuid
+  packageAmount Float       // Package in LPA
+  joiningDate   DateTime
+  status        OfferStatus @default(PENDING)
+  letterUrl     String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relations
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+// Notification Table
+model Notification {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  title        String
+  message      String    @db.Text
+  type         String    @default("SYSTEM") // INFO, JOBS, INTERVIEWS, SYSTEM
+  isRead       Boolean   @default(false)
+  priority     String    @default("NORMAL") // LOW, NORMAL, HIGH
+  metadataJson Json?
+  createdAt    DateTime  @default(now())
+
+  // Relations
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Chat & Real-Time Messaging System
+model Message {
+  id          String   @id @default(uuid()) @db.Uuid
+  senderId    String   @db.Uuid
+  receiverId  String   @db.Uuid
+  content     String   @db.Text
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+}
+
+// Audit Logs
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  action    String
+  ipAddress String?
+  userAgent String?
+  details   Json?
+  timestamp DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
