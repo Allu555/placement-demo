@@ -1,22 +1,38 @@
 import { NextRequest } from 'next/server';
-import { authService } from '@/server/services/auth.service';
+import { prisma } from '@/core/database/prisma';
+import { firebaseAdmin } from '@/core/firebase/admin';
 import { jsonResponse } from '@/core/security/session';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, email, password, role, recruiterCompanyId } = body;
+    const { idToken, name, role } = body;
 
-    if (!name || !email || !password) {
-      return jsonResponse({ error: 'Name, email, and password are required.' }, 400);
+    if (!idToken || !name) {
+      return jsonResponse({ error: 'Firebase ID Token and name are required.' }, 400);
     }
 
-    const user = await authService.register({
-      name,
-      email,
-      password,
-      role,
-      recruiterCompanyId,
+    // Verify Firebase ID Token on the backend
+    const firebaseUser = await firebaseAdmin.verifyIdToken(idToken);
+
+    // Check if user already exists in PostgreSQL
+    const existing = await prisma.user.findUnique({
+      where: { email: firebaseUser.email },
+    });
+
+    if (existing) {
+      return jsonResponse({ error: 'A user with this email address already exists.' }, 400);
+    }
+
+    // Create user in PostgreSQL with auto-generated UUID
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email: firebaseUser.email,
+        role: role || 'STUDENT',
+        status: 'ACTIVE',
+        isEmailVerified: true,
+      },
     });
 
     return jsonResponse({

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Award, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
+import { clientSignUp } from '@/core/firebase/client';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -26,10 +27,14 @@ export default function RegisterPage() {
     setSuccess('');
 
     try {
+      // 1. Sign up on Firebase (mock or real) and retrieve ID Token
+      const idToken = await clientSignUp(email, password);
+
+      // 2. POST the ID Token, name, and role to the server
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, role }),
+        body: JSON.stringify({ idToken, name, role }),
       });
 
       const data = await res.json();

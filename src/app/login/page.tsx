@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Award, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
+import { clientSignIn } from '@/core/firebase/client';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -46,10 +47,14 @@ export default function LoginPage() {
     setSuccess('');
 
     try {
+      // 1. Sign in via Firebase (mock or real) and retrieve ID Token
+      const idToken = await clientSignIn(email, password);
+
+      // 2. POST the ID Token to the server to establish session
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ idToken }),
       });
 
       const data = await res.json();
